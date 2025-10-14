@@ -2,10 +2,12 @@ FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
 
-# Install Git and TeX Live
+# Install Git and essential TeX packages
 RUN apt-get update && apt-get install -y \
     git \
-    texlive-full \
+    texlive-latex-base \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
