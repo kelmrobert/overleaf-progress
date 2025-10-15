@@ -207,3 +207,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project-specific: Runtime data directory
+# Contains user-specific data: config, metrics, logs, and cloned projects
+data/
