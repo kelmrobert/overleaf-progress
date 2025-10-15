@@ -1,0 +1,39 @@
+name: Deploy on Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEVELOPER_DEPLOY_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.DIGITALOCEAN_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          ssh ${{ secrets.DIGITALOCEAN_USER }}@${{ secrets.DIGITALOCEAN_HOST }} << 'EOF'
+            # Navigate to project directory
+            cd /opt/overleaf-progress || { echo "Project directory not found"; exit 1; }
+          
+            # Run zero-downtime deployment script
+            ./deploy.sh
+          EOF
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          curl -f http://${{ secrets.DIGITALOCEAN_HOST }}:8000/health || echo "Backend health check failed"
+          curl -f http://${{ secrets.DIGITALOCEAN_HOST }}:3000 || echo "Frontend health check failed"
