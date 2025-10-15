@@ -1,6 +1,7 @@
 """Streamlit dashboard for Overleaf thesis progress tracking."""
 
 import logging
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -236,6 +237,41 @@ def sidebar_info(config: Config, storage: MetricsStorage):
         "Metrics are extracted hourly by a cron job. "
         "Check `data/extraction.log` for details."
     )
+
+    # Manual extraction button
+    if st.sidebar.button("Extract Metrics Now", type="primary"):
+        with st.sidebar.status("Extracting metrics...", expanded=True) as status:
+            st.write("Running extraction script...")
+            try:
+                # Run the extraction script
+                script_path = Path(__file__).parent / "extract_metrics.py"
+                result = subprocess.run(
+                    [sys.executable, str(script_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout
+                )
+
+                if result.returncode == 0:
+                    status.update(label="Extraction complete!", state="complete")
+                    st.sidebar.success("Metrics extracted successfully!")
+                    # Show some output
+                    if result.stdout:
+                        with st.sidebar.expander("View extraction log"):
+                            st.code(result.stdout, language="text")
+                    st.rerun()
+                else:
+                    status.update(label="Extraction failed", state="error")
+                    st.sidebar.error("Extraction failed. Check logs for details.")
+                    if result.stderr:
+                        with st.sidebar.expander("View error log"):
+                            st.code(result.stderr, language="text")
+            except subprocess.TimeoutExpired:
+                status.update(label="Extraction timeout", state="error")
+                st.sidebar.error("Extraction timed out after 5 minutes")
+            except Exception as e:
+                status.update(label="Extraction error", state="error")
+                st.sidebar.error(f"Error running extraction: {str(e)}")
 
     # Show last extraction time if available
     try:
