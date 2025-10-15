@@ -180,6 +180,37 @@ All data is stored in the `data/` directory:
 
 This directory is mounted as a volume in Docker to persist data across container restarts.
 
+## Manual Extraction
+
+To run the metrics extraction manually (outside the hourly schedule):
+
+**Inside Docker container:**
+```bash
+docker exec overleaf-progress-tracker python3 /app/extract_metrics.py
+```
+
+**Or with docker-compose:**
+```bash
+docker-compose exec overleaf-tracker python3 /app/extract_metrics.py
+```
+
+**On local machine:**
+```bash
+python3 extract_metrics.py
+```
+
+**View logs:**
+```bash
+# Extraction log
+docker exec overleaf-progress-tracker cat /app/data/extraction.log
+
+# Cron log
+docker exec overleaf-progress-tracker cat /app/data/cron.log
+
+# Or from host (if data is mounted)
+cat data/extraction.log
+```
+
 ## Troubleshooting
 
 ### "texcount not found"
