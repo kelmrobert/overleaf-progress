@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     texlive-latex-extra \
     texlive-fonts-recommended \
     texlive-extra-utils \
+    texlive-science \
+    texlive-publishers \
+    texlive-bibtex-extra \
     cron \
     && rm -rf /var/lib/apt/lists/*
 
