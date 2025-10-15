@@ -120,7 +120,7 @@ class MetricsCalculator:
         try:
             # Use pdflatex with non-interactive mode
             # -interaction=nonstopmode: don't stop for errors
-            # -halt-on-error: stop on first error
+            # -file-line-error: stop on first error
             result = subprocess.run(
                 [
                     "pdflatex",
@@ -141,16 +141,30 @@ class MetricsCalculator:
                 logger.info(f"Successfully compiled {main_tex.name}")
                 return True, "Compilation successful", pdf_path
             else:
-                # Compilation failed
+                # Compilation failed - extract detailed error
                 error_msg = "Compilation failed"
+                missing_packages = []
+
                 # Try to extract error from log
                 if "Error" in result.stdout or "!" in result.stdout:
                     lines = result.stdout.split('\n')
                     for i, line in enumerate(lines):
-                        if '!' in line or 'Error' in line:
+                        # Look for missing package errors
+                        if "File `" in line and "' not found" in line:
+                            match = re.search(r"File `([^']+)' not found", line)
+                            if match:
+                                pkg = match.group(1)
+                                missing_packages.append(pkg)
+                        elif '!' in line or 'Error' in line:
                             error_msg = line.strip()
-                            break
-                logger.error(f"Compilation failed: {error_msg}")
+
+                # Provide helpful error message
+                if missing_packages:
+                    error_msg = f"Missing packages: {', '.join(missing_packages)}"
+                    logger.warning(f"Compilation failed due to missing packages: {missing_packages}")
+                else:
+                    logger.error(f"Compilation failed: {error_msg}")
+
                 return False, error_msg, None
 
         except subprocess.TimeoutExpired:
