@@ -9,6 +9,10 @@ services:
     volumes:
       # Persist data directory
       - ./data:/app/data
+      # Mount source code for development
+      - ./app.py:/app/app.py
+      - ./extract_metrics.py:/app/extract_metrics.py
+      - ./src:/app/src
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]

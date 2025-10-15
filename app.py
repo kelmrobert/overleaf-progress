@@ -57,30 +57,19 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
         st.info("No projects added yet. Add a project to start tracking!")
         return
 
-    # Collect data for all projects into a single DataFrame
-    combined_df = pd.DataFrame()
+    project_names = {p['id']: p['name'] for p in projects}
+    processed_df = storage.get_processed_metrics(project_names, metric_type)
 
-    for project in projects:
-        project_id = project['id']
-        project_name = project['name']
-
-        df = storage.get_metrics_history(project_id)
-
-        if not df.empty and metric_type in df.columns:
-            # Filter out None values
-            df_filtered = df[df[metric_type].notna()].copy()
-
-            if not df_filtered.empty:
-                # Add column with project name
-                combined_df[project_name] = df_filtered[metric_type]
-
-    if not combined_df.empty:
+    if not processed_df.empty:
         # Add title
         title = "Word Count Progress" if metric_type == "word_count" else "Page Count Progress"
         st.write(f"**{title}**")
 
-        # Use Streamlit line chart
-        st.line_chart(combined_df, height=400)
+        # Define colors
+        colors = ["#FF0000", "#0000FF"]  # Red and Blue
+
+        # Use Streamlit line chart with colors
+        st.line_chart(processed_df, height=400, color=colors)
     else:
         st.info("No data available yet")
 
@@ -97,41 +86,31 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
         st.info("No projects added yet. Add a project to start tracking!")
         return
 
-    # Collect all data first to properly group by date
-    combined_df = pd.DataFrame()
+    project_names = {p['id']: p['name'] for p in projects}
+    processed_df = storage.get_processed_metrics(project_names, metric_type)
 
-    for project in projects:
-        project_id = project['id']
-        project_name = project['name']
-        df = storage.get_metrics_history(project_id)
+    if not processed_df.empty:
+        # Calculate daily changes
+        daily_changes = processed_df.diff()
 
-        if not df.empty and metric_type in df.columns:
-            df_filtered = df[df[metric_type].notna()].copy()
+        # Resample to daily frequency, taking the last value of each day
+        daily_sum = daily_changes.resample('D').sum()
 
-            if len(df_filtered) > 1:
-                # Calculate daily changes
-                df_filtered['change'] = df_filtered[metric_type].diff()
-                df_changes = df_filtered[1:].copy()
+        # Filter out days with no change
+        daily_sum = daily_sum[(daily_sum != 0).any(axis=1)]
 
-                # Convert index to date only (remove time component)
-                df_changes.index = pd.to_datetime(df_changes.index).date
+        if not daily_sum.empty:
+            # Add title
+            title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
+            st.write(f"**{title}**")
 
-                # Group by date and sum changes (in case multiple entries per day)
-                df_grouped = df_changes.groupby(df_changes.index)['change'].sum()
+            # Define colors
+            colors = ["#FF0000", "#0000FF"]  # Red and Blue
 
-                # Filter out zero changes
-                df_grouped = df_grouped[df_grouped != 0]
-
-                if not df_grouped.empty:
-                    combined_df[project_name] = df_grouped
-
-    if not combined_df.empty:
-        # Add title
-        title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
-        st.write(f"**{title}**")
-
-        # Use Streamlit bar chart
-        st.bar_chart(combined_df, height=400)
+            # Use Streamlit bar chart with colors
+            st.bar_chart(daily_sum, height=400, color=colors)
+        else:
+            st.info("No daily changes to display.")
     else:
         st.info("No data available yet")
 
