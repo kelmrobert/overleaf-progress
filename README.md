@@ -84,30 +84,33 @@ https://git.overleaf.com/123456789abcdef
 - **Progress Charts**: Word count and page count trends over time
 - **Recent Updates**: Table of latest metric updates
 
-### Manual Updates
+## How It Works
 
-Click the "Update Now" button in the sidebar to trigger an immediate update outside the regular schedule.
+The application uses a simple, decoupled architecture:
 
-### Adjusting Update Interval
+1. **Cron Job**: Extracts metrics hourly via `extract_metrics.py`
+2. **JSON Storage**: Stores all data in `data/metrics.json`
+3. **Dashboard**: Read-only Streamlit app displays the data
 
-Use the slider in the Settings section to change how frequently updates occur (default: 60 minutes).
+This separation makes the system reliable and easy to understand.
 
 ## Project Structure
 
 ```
 overleaf-progress/
-├── app.py                  # Main Streamlit application
+├── app.py                  # Streamlit dashboard (read-only)
+├── extract_metrics.py      # Standalone extraction script (run by cron)
 ├── src/
 │   ├── config.py          # Configuration management
 │   ├── overleaf_sync.py   # Git synchronization
 │   ├── metrics.py         # Word/page count calculation
-│   ├── storage.py         # SQLite data storage
-│   └── scheduler.py       # Background scheduler
+│   └── storage.py         # JSON file storage
 ├── data/                   # Data directory (created on first run)
 │   ├── config.json        # Project configuration
-│   ├── metrics.db         # SQLite database
+│   ├── metrics.json       # Metrics data (JSON)
+│   ├── extraction.log     # Extraction logs
 │   └── projects/          # Cloned Overleaf projects
-├── Dockerfile             # Docker image definition
+├── Dockerfile             # Docker with cron
 ├── docker-compose.yml     # Docker Compose configuration
 ├── requirements.txt       # Python dependencies
 └── .env                   # Environment variables (create from .env.example)
@@ -134,7 +137,10 @@ pip install -r requirements.txt
 # Set environment variable
 export OVERLEAF_TOKEN=your_token_here
 
-# Run application
+# Run extraction manually (or set up local cron)
+python3 extract_metrics.py
+
+# Run dashboard
 streamlit run app.py
 ```
 
@@ -168,7 +174,8 @@ Default: 60 minutes. Adjustable via the dashboard settings or by modifying `data
 All data is stored in the `data/` directory:
 
 - `config.json`: Project list and settings
-- `metrics.db`: SQLite database with historical metrics
+- `metrics.json`: Time-series metrics data (simple JSON)
+- `extraction.log`: Logs from the extraction script
 - `projects/`: Git clones of Overleaf projects
 
 This directory is mounted as a volume in Docker to persist data across container restarts.
