@@ -77,7 +77,7 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
                     name=project_name,
                     hovertemplate=f'<b>{project_name}</b><br>' +
                                   'Date: %{x}<br>' +
-                                  f'{metric_type.replace("_", " ").title()}: %{y}<br>' +
+                                  f'{metric_type.replace("_", " ").title()}: %{{y}}<br>' +
                                   '<extra></extra>'
                 ))
 
