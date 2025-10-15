@@ -22,7 +22,7 @@ class OverleafSync:
             projects_dir: Directory to store cloned projects
             token: Overleaf authentication token
         """
-        self.projects_dir = Path(projects_dir)
+        self.projects_dir = Path(projects_dir).resolve()
         self.projects_dir.mkdir(parents=True, exist_ok=True)
         self.token = token
 

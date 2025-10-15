@@ -76,7 +76,7 @@ class MetricsCalculator:
                 return None, f"texcount error: {result.stderr}"
 
             # Parse the output
-            # texcount -1 outputs: "Words in text: XXX"
+            # texcount -1 outputs just the number
             output = result.stdout.strip()
 
             # Try to extract the number
