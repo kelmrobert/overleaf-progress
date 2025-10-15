@@ -111,13 +111,14 @@ def main():
 
     # Initialize components
     config = Config()
-    token = config.get_overleaf_token()
+    tokens = config.get_overleaf_tokens()
 
-    if not token:
+    if not tokens:
         logger.error("OVERLEAF_TOKEN not set. Please configure it.")
         sys.exit(1)
 
-    sync = OverleafSync(token=token)
+    logger.info(f"Using {len(tokens)} authentication token(s)")
+    sync = OverleafSync(tokens=tokens)
     calculator = MetricsCalculator()
     storage = MetricsStorage()
 

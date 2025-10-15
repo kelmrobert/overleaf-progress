@@ -94,17 +94,34 @@ class Config:
             return True
         return False
 
-    def get_overleaf_token(self) -> str:
-        """Get Overleaf authentication token.
+    def get_overleaf_tokens(self) -> List[str]:
+        """Get list of Overleaf authentication tokens.
 
         Returns:
-            Overleaf token from config or environment variable
+            List of Overleaf tokens from environment variable (comma-separated)
         """
-        # Prefer environment variable over config file
-        token = os.getenv("OVERLEAF_TOKEN")
-        if token:
-            return token
-        return self.data.get("overleaf_token", "")
+        # Get tokens from environment variable
+        token_str = os.getenv("OVERLEAF_TOKEN", "")
+        if token_str:
+            # Split by comma and strip whitespace
+            tokens = [t.strip() for t in token_str.split(",") if t.strip()]
+            return tokens
+
+        # Fallback to single token from config
+        legacy_token = self.data.get("overleaf_token", "")
+        if legacy_token:
+            return [legacy_token]
+
+        return []
+
+    def get_overleaf_token(self) -> str:
+        """Get first Overleaf authentication token (for backward compatibility).
+
+        Returns:
+            First Overleaf token or empty string
+        """
+        tokens = self.get_overleaf_tokens()
+        return tokens[0] if tokens else ""
 
     def set_overleaf_token(self, token: str) -> None:
         """Set Overleaf authentication token.

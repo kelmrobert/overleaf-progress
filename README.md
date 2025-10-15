@@ -238,13 +238,37 @@ ports:
   - "8502:8501"  # Change 8502 to any available port
 ```
 
-## Multiple User Tracking
+## Multiple Account Support
 
-To track projects from multiple users:
+The tracker supports multiple Overleaf accounts without requiring collaborator access. You can provide multiple authentication tokens, and the system will automatically try each one until it finds the correct account for each project.
 
-1. The Overleaf account with the token must be added as a collaborator on each project
-2. Add each project using its project ID
-3. All projects will be tracked and displayed together
+### Setup Multiple Accounts
+
+1. **Get tokens from each account:**
+   - Log into each Overleaf account
+   - Go to Account Settings → Git Integration
+   - Copy the Git token
+
+2. **Configure multiple tokens:**
+   ```bash
+   # In your .env file, separate tokens with commas
+   OVERLEAF_TOKEN=token_from_account1,token_from_account2,token_from_account3
+   ```
+
+3. **Add projects:**
+   - Add any project ID from any account
+   - The system will automatically try each token until one works
+   - No need to specify which token belongs to which project
+
+### How It Works
+
+When cloning or accessing a project:
+1. The system tries the first token
+2. If access is denied, it automatically tries the next token
+3. This continues until a token with access is found
+4. The successful token is used for all future operations on that project
+
+This approach allows you to track projects from multiple Overleaf accounts (personal, work, collaborations, etc.) without manual configuration.
 
 ## Contributing
 

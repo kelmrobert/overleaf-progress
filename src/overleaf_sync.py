@@ -3,7 +3,7 @@
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import git
 from git import Repo
@@ -15,33 +15,34 @@ logger = logging.getLogger(__name__)
 class OverleafSync:
     """Handles synchronization with Overleaf Git repositories."""
 
-    def __init__(self, projects_dir: str = "data/projects", token: str = ""):
+    def __init__(self, projects_dir: str = "data/projects", tokens: Optional[List[str]] = None):
         """Initialize Overleaf sync manager.
 
         Args:
             projects_dir: Directory to store cloned projects
-            token: Overleaf authentication token
+            tokens: List of Overleaf authentication tokens (will try each in order)
         """
         self.projects_dir = Path(projects_dir).resolve()
         self.projects_dir.mkdir(parents=True, exist_ok=True)
-        self.token = token
+        self.tokens = tokens or []
 
-    def _get_auth_url(self, git_url: str) -> str:
+    def _get_auth_url(self, git_url: str, token: str) -> str:
         """Construct authenticated Git URL.
 
         Args:
             git_url: Base Git URL
+            token: Authentication token
 
         Returns:
             Authenticated Git URL with embedded token
         """
-        if not self.token:
+        if not token:
             logger.warning("No Overleaf token provided")
             return git_url
 
         # Replace https:// with https://git:TOKEN@
         if git_url.startswith("https://"):
-            return git_url.replace("https://", f"https://git:{self.token}@")
+            return git_url.replace("https://", f"https://git:{token}@")
         return git_url
 
     def _get_project_path(self, project_id: str) -> Path:
@@ -56,7 +57,7 @@ class OverleafSync:
         return self.projects_dir / project_id
 
     def clone_project(self, project_id: str, git_url: str) -> Tuple[bool, str]:
-        """Clone an Overleaf project.
+        """Clone an Overleaf project, trying each token until one works.
 
         Args:
             project_id: Project ID
@@ -70,27 +71,39 @@ class OverleafSync:
         if project_path.exists():
             return False, f"Project already exists at {project_path}"
 
-        try:
-            auth_url = self._get_auth_url(git_url)
-            logger.info(f"Cloning project {project_id}...")
+        if not self.tokens:
+            return False, "No authentication tokens provided"
 
-            # Clone the repository
-            Repo.clone_from(auth_url, project_path)
-            logger.info(f"Successfully cloned project {project_id}")
-            return True, "Project cloned successfully"
+        # Try each token
+        last_error = ""
+        for i, token in enumerate(self.tokens):
+            try:
+                auth_url = self._get_auth_url(git_url, token)
+                logger.info(f"Cloning project {project_id} with token {i+1}/{len(self.tokens)}...")
 
-        except git.exc.GitCommandError as e:
-            error_msg = f"Failed to clone project: {str(e)}"
-            logger.error(error_msg)
-            # Clean up partial clone if it exists
-            if project_path.exists():
-                import shutil
-                shutil.rmtree(project_path)
-            return False, error_msg
-        except Exception as e:
-            error_msg = f"Unexpected error cloning project: {str(e)}"
-            logger.error(error_msg)
-            return False, error_msg
+                # Clone the repository
+                Repo.clone_from(auth_url, project_path)
+                logger.info(f"Successfully cloned project {project_id} with token {i+1}")
+                return True, f"Project cloned successfully with token {i+1}"
+
+            except git.exc.GitCommandError as e:
+                last_error = f"Failed with token {i+1}: {str(e)}"
+                logger.warning(last_error)
+                # Clean up partial clone if it exists
+                if project_path.exists():
+                    import shutil
+                    shutil.rmtree(project_path)
+                # Continue to next token
+
+            except Exception as e:
+                last_error = f"Unexpected error with token {i+1}: {str(e)}"
+                logger.warning(last_error)
+                # Continue to next token
+
+        # All tokens failed
+        error_msg = f"Failed to clone with all {len(self.tokens)} tokens. Last error: {last_error}"
+        logger.error(error_msg)
+        return False, error_msg
 
     def pull_updates(self, project_id: str) -> Tuple[bool, str, bool]:
         """Pull latest updates for a project.

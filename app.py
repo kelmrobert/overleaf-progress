@@ -30,7 +30,7 @@ st.set_page_config(
     page_title="Thesis Progress Tracker",
     page_icon="📚",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 
@@ -38,8 +38,8 @@ st.set_page_config(
 def initialize_components():
     """Initialize application components."""
     config = Config()
-    token = config.get_overleaf_token()
-    sync = OverleafSync(token=token)
+    tokens = config.get_overleaf_tokens()
+    sync = OverleafSync(tokens=tokens)
     storage = MetricsStorage()
 
     return config, sync, storage
