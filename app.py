@@ -6,6 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -76,7 +77,7 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
 
 
 def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str = "word_count"):
-    """Plot daily changes in metrics as bar charts grouped by date.
+    """Plot daily changes in metrics as grouped bar charts by date.
 
     Args:
         storage: Metrics storage instance
@@ -107,10 +108,34 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
 
             # Define a list of colors
             color_palette = ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#FF00FF", "#00FFFF"]
-            colors = color_palette[:len(daily_sum.columns)]
 
-            # Use Streamlit bar chart with colors
-            st.bar_chart(daily_sum, height=400, color=colors)
+            # Reshape data for grouped bars: stack by date and project
+            # Convert from wide format (columns=projects) to long format
+            daily_sum_reset = daily_sum.reset_index()
+            date_col = daily_sum_reset.columns[0]  # Get the actual name of the date column
+            melted = daily_sum_reset.melt(id_vars=date_col, var_name='Project', value_name='Change')
+
+            # Create a date string column for display
+            melted['Date'] = melted[date_col].dt.strftime('%Y-%m-%d')
+
+            # Assign colors based on project
+            project_list = daily_sum.columns.tolist()
+            color_map = {proj: color_palette[idx % len(color_palette)] for idx, proj in enumerate(project_list)}
+
+            # Create Altair grouped bar chart
+            chart = alt.Chart(melted).mark_bar().encode(
+                x=alt.X('Date:N', title='Date', axis=alt.Axis(labelAngle=-45)),
+                y=alt.Y('Change:Q', title=title),
+                color=alt.Color('Project:N',
+                                scale=alt.Scale(domain=list(color_map.keys()),
+                                              range=list(color_map.values())),
+                                legend=alt.Legend(title='Project')),
+                xOffset='Project:N'  # This creates the grouped effect
+            ).properties(
+                height=400
+            )
+
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No daily changes to display.")
     else:
