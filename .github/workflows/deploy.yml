@@ -31,9 +31,3 @@ jobs:
             # Run zero-downtime deployment script
             ./deploy.sh
           EOF
-
-      - name: Verify deployment
-        run: |
-          sleep 10
-          curl -f http://${{ secrets.DIGITALOCEAN_HOST }}:8000/health || echo "Backend health check failed"
-          curl -f http://${{ secrets.DIGITALOCEAN_HOST }}:3000 || echo "Frontend health check failed"
