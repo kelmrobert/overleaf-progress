@@ -1,4 +1,5 @@
 [server]
+runOnSave = true
 headless = true
 port = 8501
 enableXsrfProtection = false
