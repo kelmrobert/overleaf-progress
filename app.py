@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -13,9 +13,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import Config
-from src.metrics import MetricsCalculator
 from src.overleaf_sync import OverleafSync
-from src.scheduler import MetricsScheduler
 from src.storage import MetricsStorage
 
 
@@ -42,15 +40,9 @@ def initialize_components():
     config = Config()
     token = config.get_overleaf_token()
     sync = OverleafSync(token=token)
-    calculator = MetricsCalculator()
     storage = MetricsStorage()
 
-    scheduler = MetricsScheduler(config, sync, calculator, storage)
-
-    # Start scheduler
-    scheduler.start()
-
-    return config, sync, calculator, storage, scheduler
+    return config, sync, storage
 
 
 def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type: str = "word_count"):
@@ -155,12 +147,12 @@ def display_project_cards(storage: MetricsStorage, projects: list):
                 st.info("No data yet")
 
 
-def sidebar_add_project(config: Config, scheduler: MetricsScheduler):
+def sidebar_add_project(config: Config, sync: OverleafSync):
     """Sidebar section for adding new projects.
 
     Args:
         config: Configuration instance
-        scheduler: Scheduler instance
+        sync: Sync instance
     """
     st.sidebar.header("Add New Project")
 
@@ -190,9 +182,7 @@ def sidebar_add_project(config: Config, scheduler: MetricsScheduler):
 
                 if success:
                     st.success(f"Project '{project_name}' added successfully!")
-                    # Trigger immediate update
-                    scheduler.trigger_immediate_update()
-                    st.info("Triggering initial data collection...")
+                    st.info("The metrics will be collected on the next hourly run.")
                     st.rerun()
                 else:
                     st.error("Project already exists")
@@ -233,34 +223,35 @@ def sidebar_remove_project(config: Config, storage: MetricsStorage, sync: Overle
             st.rerun()
 
 
-def sidebar_settings(config: Config, scheduler: MetricsScheduler):
-    """Sidebar section for settings.
+def sidebar_info(config: Config, storage: MetricsStorage):
+    """Sidebar section with extraction info.
 
     Args:
         config: Configuration instance
-        scheduler: Scheduler instance
+        storage: Storage instance
     """
-    st.sidebar.header("Settings")
+    st.sidebar.header("Data Extraction")
 
-    current_interval = config.get_update_interval()
-
-    new_interval = st.sidebar.slider(
-        "Update Interval (minutes)",
-        min_value=5,
-        max_value=360,
-        value=current_interval,
-        step=5,
-        help="How often to check for updates"
+    st.sidebar.info(
+        "Metrics are extracted hourly by a cron job. "
+        "Check `data/extraction.log` for details."
     )
 
-    if new_interval != current_interval:
-        config.set_update_interval(new_interval)
-        st.sidebar.success("Settings saved! Restart app to apply.")
+    # Show last extraction time if available
+    try:
+        log_file = Path("data/extraction.log")
+        if log_file.exists():
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
+                if lines:
+                    last_line = lines[-1]
+                    if "Starting metrics extraction" in last_line:
+                        st.sidebar.caption(f"Last extraction: Check log file")
+    except Exception:
+        pass
 
-    # Manual update button
-    if st.sidebar.button("Update Now", type="primary"):
-        scheduler.trigger_immediate_update()
-        st.sidebar.info("Update triggered! Refresh in a moment to see results.")
+    update_interval = config.get_update_interval()
+    st.sidebar.caption(f"Update interval: {update_interval} minutes")
 
 
 def main():
@@ -269,27 +260,28 @@ def main():
     st.markdown("Track your Overleaf thesis progress with automated word and page counts")
 
     # Initialize components
-    config, sync, calculator, storage, scheduler = initialize_components()
+    config, sync, storage = initialize_components()
 
     # Sidebar
-    sidebar_add_project(config, scheduler)
+    sidebar_add_project(config, sync)
     st.sidebar.divider()
     sidebar_remove_project(config, storage, sync)
     st.sidebar.divider()
-    sidebar_settings(config, scheduler)
-
-    # Display scheduler status
-    status = scheduler.get_status()
-    st.sidebar.divider()
-    st.sidebar.caption(f"Scheduler: {'🟢 Running' if status['is_running'] else '🔴 Stopped'}")
-    if status['last_update_time']:
-        st.sidebar.caption(f"Last update: {status['last_update_time'].strftime('%H:%M:%S')}")
+    sidebar_info(config, storage)
 
     # Main content
     projects = config.get_projects()
 
     if not projects:
         st.info("👈 Add your first project using the sidebar to start tracking progress!")
+        st.markdown("""
+        ### How it works
+        1. Add your Overleaf project using the sidebar
+        2. Metrics are automatically extracted every hour via cron
+        3. View your progress over time in the charts below
+
+        **Note:** Make sure the `extract_metrics.py` script is running via cron.
+        """)
     else:
         # Display current metrics
         st.header("Current Status")
@@ -307,27 +299,6 @@ def main():
 
         with tab2:
             plot_metrics_over_time(storage, projects, "page_count")
-
-        # Show recent updates
-        st.divider()
-        st.header("Recent Updates")
-
-        if status['update_status']:
-            update_data = []
-            for proj_id, proj_status in status['update_status'].items():
-                update_data.append({
-                    'Project': proj_status['project_name'],
-                    'Time': proj_status['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-                    'Words': proj_status['word_count'] or 'N/A',
-                    'Pages': proj_status['page_count'] or 'N/A',
-                    'Status': '✅' if proj_status['success'] else '❌',
-                    'Message': proj_status['message']
-                })
-
-            df = pd.DataFrame(update_data)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        else:
-            st.info("No updates yet. Wait for the first scheduled update or click 'Update Now'.")
 
 
 if __name__ == "__main__":
