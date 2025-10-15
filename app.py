@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 # Add src to path
@@ -58,7 +57,8 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
         st.info("No projects added yet. Add a project to start tracking!")
         return
 
-    fig = go.Figure()
+    # Collect data for all projects into a single DataFrame
+    combined_df = pd.DataFrame()
 
     for project in projects:
         project_id = project['id']
@@ -68,41 +68,21 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
 
         if not df.empty and metric_type in df.columns:
             # Filter out None values
-            df_filtered = df[df[metric_type].notna()]
+            df_filtered = df[df[metric_type].notna()].copy()
 
             if not df_filtered.empty:
-                fig.add_trace(go.Scatter(
-                    x=df_filtered.index,
-                    y=df_filtered[metric_type],
-                    mode='lines+markers',
-                    name=project_name,
-                    hovertemplate=f'<b>{project_name}</b><br>' +
-                                  'Date: %{x}<br>' +
-                                  f'{metric_type.replace("_", " ").title()}: %{{y}}<br>' +
-                                  '<extra></extra>'
-                ))
+                # Add column with project name
+                combined_df[project_name] = df_filtered[metric_type]
 
-    # Update layout
-    title = "Word Count Progress" if metric_type == "word_count" else "Page Count Progress"
-    y_label = "Words" if metric_type == "word_count" else "Pages"
+    if not combined_df.empty:
+        # Add title
+        title = "Word Count Progress" if metric_type == "word_count" else "Page Count Progress"
+        st.write(f"**{title}**")
 
-    fig.update_layout(
-        title=title,
-        xaxis_title="Date",
-        yaxis_title=y_label,
-        hovermode='x unified',
-        height=500,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+        # Use Streamlit line chart
+        st.line_chart(combined_df, height=400)
+    else:
+        st.info("No data available yet")
 
 
 def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str = "word_count"):
@@ -117,10 +97,9 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
         st.info("No projects added yet. Add a project to start tracking!")
         return
 
-    fig = go.Figure()
-
     # Collect all data first to properly group by date
-    project_data = {}
+    combined_df = pd.DataFrame()
+
     for project in projects:
         project_id = project['id']
         project_name = project['name']
@@ -144,43 +123,17 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
                 df_grouped = df_grouped[df_grouped != 0]
 
                 if not df_grouped.empty:
-                    project_data[project_name] = df_grouped
+                    combined_df[project_name] = df_grouped
 
-    # Create a bar for each project
-    for project_name, df_grouped in project_data.items():
-        fig.add_trace(go.Bar(
-            x=[str(d) for d in df_grouped.index],
-            y=df_grouped.values,
-            name=project_name,
-            hovertemplate=f'<b>{project_name}</b><br>' +
-                          'Date: %{x}<br>' +
-                          f'Change: %{{y:+.0f}}<br>' +
-                          '<extra></extra>'
-        ))
+    if not combined_df.empty:
+        # Add title
+        title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
+        st.write(f"**{title}**")
 
-    # Update layout
-    title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
-    y_label = "Words Change" if metric_type == "word_count" else "Pages Change"
-
-    fig.update_layout(
-        title=title,
-        xaxis_title="Date",
-        yaxis_title=y_label,
-        hovermode='x unified',
-        height=400,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        barmode='group',
-        xaxis={'type': 'category'}
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
+        # Use Streamlit bar chart
+        st.bar_chart(combined_df, height=400)
+    else:
+        st.info("No data available yet")
 
 
 def display_project_cards(storage: MetricsStorage, projects: list):
@@ -242,11 +195,7 @@ def sidebar_add_project(config: Config, sync: OverleafSync):
         )
         project_name = st.text_input(
             "Display Name",
-            help="A friendly name for this project (e.g., 'Alice's Thesis')"
-        )
-        git_url = st.text_input(
-            "Git URL (optional)",
-            help="Leave empty to auto-generate from project ID"
+            help="A friendly name for this project"
         )
 
         submitted = st.form_submit_button("Add Project")
@@ -256,8 +205,7 @@ def sidebar_add_project(config: Config, sync: OverleafSync):
                 st.error("Please provide both Project ID and Display Name")
             else:
                 # Add project to config
-                url = git_url if git_url else None
-                success = config.add_project(project_id, project_name, url)
+                success = config.add_project(project_id, project_name, None)
 
                 if success:
                     st.success(f"Project '{project_name}' added successfully!")
@@ -311,13 +259,10 @@ def sidebar_info(config: Config, storage: MetricsStorage):
     """
     st.sidebar.header("Data Extraction")
 
-    st.sidebar.info(
-        "Metrics are extracted hourly by a cron job. "
-        "Check `data/extraction.log` for details."
-    )
+    st.caption("Metrics are extracted hourly by, you can trigger a manual extraction below.")
 
     # Manual extraction button
-    if st.sidebar.button("Extract Metrics Now", type="primary"):
+    if st.sidebar.button("💾 Extract Manually", type="primary"):
         with st.sidebar.status("Extracting metrics...", expanded=True) as status:
             st.write("Running extraction script...")
             try:
@@ -364,9 +309,6 @@ def sidebar_info(config: Config, storage: MetricsStorage):
     except Exception:
         pass
 
-    update_interval = config.get_update_interval()
-    st.sidebar.caption(f"Update interval: {update_interval} minutes")
-
 
 def main():
     """Main application."""
@@ -377,11 +319,11 @@ def main():
     config, sync, storage = initialize_components()
 
     # Sidebar
+    sidebar_info(config, storage)
+    st.sidebar.divider()
     sidebar_add_project(config, sync)
     st.sidebar.divider()
     sidebar_remove_project(config, storage, sync)
-    st.sidebar.divider()
-    sidebar_info(config, storage)
 
     # Main content
     projects = config.get_projects()
