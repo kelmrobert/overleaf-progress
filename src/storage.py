@@ -1,10 +1,10 @@
-"""Data storage module using SQLite."""
+"""Data storage module using JSON files."""
 
+import json
 import logging
-import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import pandas as pd
 
@@ -13,44 +13,49 @@ logger = logging.getLogger(__name__)
 
 
 class MetricsStorage:
-    """Manages storage of metrics in SQLite database."""
+    """Manages storage of metrics in JSON files."""
 
-    def __init__(self, db_path: str = "data/metrics.db"):
+    def __init__(self, data_dir: str = "data"):
         """Initialize metrics storage.
 
         Args:
-            db_path: Path to SQLite database file
+            data_dir: Directory to store JSON files
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_database()
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.metrics_file = self.data_dir / "metrics.json"
+        self._ensure_file_exists()
 
-    def _init_database(self) -> None:
-        """Initialize database schema."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def _ensure_file_exists(self) -> None:
+        """Ensure the metrics file exists."""
+        if not self.metrics_file.exists():
+            self._save_data([])
+            logger.info("Created new metrics file")
 
-        # Create metrics table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id TEXT NOT NULL,
-                timestamp TEXT NOT NULL,
-                word_count INTEGER,
-                page_count INTEGER,
-                commit_hash TEXT
-            )
-        """)
+    def _load_data(self) -> List[dict]:
+        """Load all metrics from JSON file.
 
-        # Create index on project_id and timestamp for faster queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_project_timestamp
-            ON metrics (project_id, timestamp)
-        """)
+        Returns:
+            List of metric dictionaries
+        """
+        try:
+            with open(self.metrics_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load metrics: {str(e)}")
+            return []
 
-        conn.commit()
-        conn.close()
-        logger.info("Database initialized")
+    def _save_data(self, data: List[dict]) -> None:
+        """Save all metrics to JSON file.
+
+        Args:
+            data: List of metric dictionaries
+        """
+        try:
+            with open(self.metrics_file, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f"Failed to save metrics: {str(e)}")
 
     def save_metric(
         self,
@@ -76,19 +81,18 @@ class MetricsStorage:
             timestamp = datetime.now()
 
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            data = self._load_data()
 
-            cursor.execute(
-                """
-                INSERT INTO metrics (project_id, timestamp, word_count, page_count, commit_hash)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (project_id, timestamp.isoformat(), word_count, page_count, commit_hash)
-            )
+            metric = {
+                'project_id': project_id,
+                'timestamp': timestamp.isoformat(),
+                'word_count': word_count,
+                'page_count': page_count,
+                'commit_hash': commit_hash
+            }
 
-            conn.commit()
-            conn.close()
+            data.append(metric)
+            self._save_data(data)
 
             logger.info(
                 f"Saved metrics for {project_id}: "
@@ -100,37 +104,32 @@ class MetricsStorage:
             logger.error(f"Failed to save metrics: {str(e)}")
             return False
 
-    def get_latest_metrics(self, project_id: str) -> Optional[Tuple[datetime, int, int]]:
+    def get_latest_metrics(self, project_id: str) -> Optional[dict]:
         """Get the latest metrics for a project.
 
         Args:
             project_id: Project ID
 
         Returns:
-            Tuple of (timestamp, word_count, page_count) or None
+            Dictionary with timestamp, word_count, page_count or None
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            data = self._load_data()
 
-            cursor.execute(
-                """
-                SELECT timestamp, word_count, page_count
-                FROM metrics
-                WHERE project_id = ?
-                ORDER BY timestamp DESC
-                LIMIT 1
-                """,
-                (project_id,)
-            )
+            # Filter by project_id and sort by timestamp
+            project_data = [m for m in data if m['project_id'] == project_id]
+            if not project_data:
+                return None
 
-            row = cursor.fetchone()
-            conn.close()
+            # Sort by timestamp descending
+            project_data.sort(key=lambda x: x['timestamp'], reverse=True)
+            latest = project_data[0]
 
-            if row:
-                timestamp = datetime.fromisoformat(row[0])
-                return timestamp, row[1], row[2]
-            return None
+            return {
+                'timestamp': datetime.fromisoformat(latest['timestamp']),
+                'word_count': latest['word_count'],
+                'page_count': latest['page_count']
+            }
 
         except Exception as e:
             logger.error(f"Failed to get latest metrics: {str(e)}")
@@ -153,33 +152,29 @@ class MetricsStorage:
             DataFrame with columns: timestamp, word_count, page_count
         """
         try:
-            conn = sqlite3.connect(self.db_path)
+            data = self._load_data()
 
-            query = """
-                SELECT timestamp, word_count, page_count, commit_hash
-                FROM metrics
-                WHERE project_id = ?
-            """
-            params = [project_id]
+            # Filter by project_id
+            project_data = [m for m in data if m['project_id'] == project_id]
 
+            if not project_data:
+                return pd.DataFrame()
+
+            # Convert to DataFrame
+            df = pd.DataFrame(project_data)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+            # Apply date filters
             if start_date:
-                query += " AND timestamp >= ?"
-                params.append(start_date.isoformat())
-
+                df = df[df['timestamp'] >= start_date]
             if end_date:
-                query += " AND timestamp <= ?"
-                params.append(end_date.isoformat())
+                df = df[df['timestamp'] <= end_date]
 
-            query += " ORDER BY timestamp ASC"
+            # Set timestamp as index and sort
+            df.set_index('timestamp', inplace=True)
+            df.sort_index(inplace=True)
 
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
-
-            if not df.empty:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df.set_index('timestamp', inplace=True)
-
-            return df
+            return df[['word_count', 'page_count', 'commit_hash']]
 
         except Exception as e:
             logger.error(f"Failed to get metrics history: {str(e)}")
@@ -200,28 +195,23 @@ class MetricsStorage:
             DataFrame with columns: project_id, timestamp, word_count, page_count
         """
         try:
-            conn = sqlite3.connect(self.db_path)
+            data = self._load_data()
 
-            query = "SELECT project_id, timestamp, word_count, page_count FROM metrics WHERE 1=1"
-            params = []
+            if not data:
+                return pd.DataFrame()
 
+            df = pd.DataFrame(data)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+            # Apply date filters
             if start_date:
-                query += " AND timestamp >= ?"
-                params.append(start_date.isoformat())
-
+                df = df[df['timestamp'] >= start_date]
             if end_date:
-                query += " AND timestamp <= ?"
-                params.append(end_date.isoformat())
+                df = df[df['timestamp'] <= end_date]
 
-            query += " ORDER BY timestamp ASC"
+            df.sort_values('timestamp', inplace=True)
 
-            df = pd.read_sql_query(query, conn, params=params)
-            conn.close()
-
-            if not df.empty:
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-
-            return df
+            return df[['project_id', 'timestamp', 'word_count', 'page_count']]
 
         except Exception as e:
             logger.error(f"Failed to get all metrics history: {str(e)}")
@@ -250,17 +240,17 @@ class MetricsStorage:
 
         if len(df) > 1:
             previous = df.iloc[-2]
-            if latest['word_count'] and previous['word_count']:
-                word_count_delta = latest['word_count'] - previous['word_count']
-            if latest['page_count'] and previous['page_count']:
-                page_count_delta = latest['page_count'] - previous['page_count']
+            if pd.notna(latest['word_count']) and pd.notna(previous['word_count']):
+                word_count_delta = int(latest['word_count'] - previous['word_count'])
+            if pd.notna(latest['page_count']) and pd.notna(previous['page_count']):
+                page_count_delta = int(latest['page_count'] - previous['page_count'])
 
         return {
-            'current_word_count': int(latest['word_count']) if latest['word_count'] else 0,
-            'current_page_count': int(latest['page_count']) if latest['page_count'] else 0,
+            'current_word_count': int(latest['word_count']) if pd.notna(latest['word_count']) else 0,
+            'current_page_count': int(latest['page_count']) if pd.notna(latest['page_count']) else 0,
             'word_count_delta': word_count_delta,
             'page_count_delta': page_count_delta,
-            'last_update': latest.name,
+            'last_update': df.index[-1],
             'total_measurements': len(df)
         }
 
@@ -274,13 +264,12 @@ class MetricsStorage:
             True if successful
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            data = self._load_data()
 
-            cursor.execute("DELETE FROM metrics WHERE project_id = ?", (project_id,))
+            # Filter out the project
+            filtered_data = [m for m in data if m['project_id'] != project_id]
 
-            conn.commit()
-            conn.close()
+            self._save_data(filtered_data)
 
             logger.info(f"Deleted all metrics for project {project_id}")
             return True
