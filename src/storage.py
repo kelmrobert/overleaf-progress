@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
+from src.dataframe import group_and_pivot_metrics
 
 
 logger = logging.getLogger(__name__)
@@ -290,3 +291,19 @@ class MetricsStorage:
         except Exception as e:
             logger.error(f"Failed to delete project data: {str(e)}")
             return False
+
+    def get_processed_metrics(self, project_names: dict, metric_type: str) -> pd.DataFrame:
+        """Get processed and pivoted metrics for all projects.
+
+        Args:
+            project_names: Dictionary mapping project IDs to names.
+            metric_type: The metric to use (e.g., 'word_count').
+
+        Returns:
+            A processed DataFrame ready for charting.
+        """
+        all_metrics_df = self.get_all_metrics_history()
+        if all_metrics_df.empty:
+            return pd.DataFrame()
+
+        return group_and_pivot_metrics(all_metrics_df, project_names, metric_type)
