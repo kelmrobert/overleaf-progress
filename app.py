@@ -106,7 +106,7 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
 
 
 def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str = "word_count"):
-    """Plot daily changes in metrics as bar charts.
+    """Plot daily changes in metrics as bar charts grouped by date.
 
     Args:
         storage: Metrics storage instance
@@ -119,38 +119,44 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
 
     fig = go.Figure()
 
+    # Collect all data first to properly group by date
+    project_data = {}
     for project in projects:
         project_id = project['id']
         project_name = project['name']
-
         df = storage.get_metrics_history(project_id)
 
         if not df.empty and metric_type in df.columns:
-            # Filter out None values
             df_filtered = df[df[metric_type].notna()].copy()
 
             if len(df_filtered) > 1:
                 # Calculate daily changes
                 df_filtered['change'] = df_filtered[metric_type].diff()
-
-                # Remove first row (NaN) and filter to show only non-zero changes
                 df_changes = df_filtered[1:].copy()
-                df_changes = df_changes[df_changes['change'] != 0]
 
-                if not df_changes.empty:
-                    # Create color array: green for positive, red for negative
-                    colors = ['green' if x > 0 else 'red' for x in df_changes['change']]
+                # Convert index to date only (remove time component)
+                df_changes.index = pd.to_datetime(df_changes.index).date
 
-                    fig.add_trace(go.Bar(
-                        x=df_changes.index,
-                        y=df_changes['change'],
-                        name=project_name,
-                        marker_color=colors,
-                        hovertemplate=f'<b>{project_name}</b><br>' +
-                                      'Date: %{x}<br>' +
-                                      f'Change: %{{y:+d}}<br>' +
-                                      '<extra></extra>'
-                    ))
+                # Group by date and sum changes (in case multiple entries per day)
+                df_grouped = df_changes.groupby(df_changes.index)['change'].sum()
+
+                # Filter out zero changes
+                df_grouped = df_grouped[df_grouped != 0]
+
+                if not df_grouped.empty:
+                    project_data[project_name] = df_grouped
+
+    # Create a bar for each project
+    for project_name, df_grouped in project_data.items():
+        fig.add_trace(go.Bar(
+            x=[str(d) for d in df_grouped.index],
+            y=df_grouped.values,
+            name=project_name,
+            hovertemplate=f'<b>{project_name}</b><br>' +
+                          'Date: %{x}<br>' +
+                          f'Change: %{{y:+.0f}}<br>' +
+                          '<extra></extra>'
+        ))
 
     # Update layout
     title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
@@ -161,7 +167,7 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
         xaxis_title="Date",
         yaxis_title=y_label,
         hovermode='x unified',
-        height=500,
+        height=400,
         showlegend=True,
         legend=dict(
             orientation="h",
@@ -170,7 +176,8 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
             xanchor="right",
             x=1
         ),
-        barmode='group'
+        barmode='group',
+        xaxis={'type': 'category'}
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -363,7 +370,7 @@ def sidebar_info(config: Config, storage: MetricsStorage):
 
 def main():
     """Main application."""
-    st.title("📚 Thesis Writing Progress Tracker")
+    st.title("📚 Thesis Progress Tracker")
     st.markdown("Track your Overleaf thesis progress with automated word and page counts")
 
     # Initialize components
@@ -399,24 +406,26 @@ def main():
         # Display charts
         st.header("Progress Over Time")
 
-        tab1, tab2 = st.tabs(["Word Count", "Page Count"])
+        # Cumulative progress charts side by side
+        st.subheader("Cumulative Progress")
+        col1, col2 = st.columns(2)
 
-        with tab1:
-            st.subheader("Cumulative Word Count")
+        with col1:
             plot_metrics_over_time(storage, projects, "word_count")
 
-            st.divider()
-
-            st.subheader("Words Added Per Day")
-            plot_daily_change(storage, projects, "word_count")
-
-        with tab2:
-            st.subheader("Cumulative Page Count")
+        with col2:
             plot_metrics_over_time(storage, projects, "page_count")
 
-            st.divider()
+        st.divider()
 
-            st.subheader("Pages Added Per Day")
+        # Daily changes side by side
+        st.subheader("Daily Changes")
+        col3, col4 = st.columns(2)
+
+        with col3:
+            plot_daily_change(storage, projects, "word_count")
+
+        with col4:
             plot_daily_change(storage, projects, "page_count")
 
 
