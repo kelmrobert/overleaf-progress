@@ -65,8 +65,9 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
         title = "Word Count Progress" if metric_type == "word_count" else "Page Count Progress"
         st.write(f"**{title}**")
 
-        # Define colors
-        colors = ["#FF0000", "#0000FF"]  # Red and Blue
+        # Define a list of colors
+        color_palette = ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#FF00FF", "#00FFFF"]
+        colors = color_palette[:len(processed_df.columns)]
 
         # Use Streamlit line chart with colors
         st.line_chart(processed_df, height=400, color=colors)
@@ -104,8 +105,9 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
             title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
             st.write(f"**{title}**")
 
-            # Define colors
-            colors = ["#FF0000", "#0000FF"]  # Red and Blue
+            # Define a list of colors
+            color_palette = ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#FF00FF", "#00FFFF"]
+            colors = color_palette[:len(daily_sum.columns)]
 
             # Use Streamlit bar chart with colors
             st.bar_chart(daily_sum, height=400, color=colors)

@@ -38,5 +38,7 @@ def group_and_pivot_metrics(
 
     # Forward-fill missing values to create continuous lines
     pivot_df.ffill(inplace=True)
+    # Backward-fill to handle any remaining NaNs at the beginning
+    pivot_df.bfill(inplace=True)
 
     return pivot_df
