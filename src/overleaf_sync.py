@@ -120,6 +120,13 @@ class OverleafSync:
             return False, "Project not found locally. Please clone it first.", False
 
         try:
+            # Configure git to trust this directory (fixes ownership issues in containers)
+            subprocess.run(
+                ["git", "config", "--global", "--add", "safe.directory", str(project_path)],
+                check=False,  # Don't fail if already exists
+                capture_output=True
+            )
+
             repo = Repo(project_path)
 
             # Get current commit hash
@@ -166,6 +173,13 @@ class OverleafSync:
             return None
 
         try:
+            # Configure git to trust this directory (fixes ownership issues in containers)
+            subprocess.run(
+                ["git", "config", "--global", "--add", "safe.directory", str(project_path)],
+                check=False,  # Don't fail if already exists
+                capture_output=True
+            )
+
             repo = Repo(project_path)
             return repo.head.commit.hexsha
         except Exception as e:
