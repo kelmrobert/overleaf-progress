@@ -105,6 +105,77 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str = "word_count"):
+    """Plot daily changes in metrics as bar charts.
+
+    Args:
+        storage: Metrics storage instance
+        projects: List of project dictionaries
+        metric_type: Either "word_count" or "page_count"
+    """
+    if not projects:
+        st.info("No projects added yet. Add a project to start tracking!")
+        return
+
+    fig = go.Figure()
+
+    for project in projects:
+        project_id = project['id']
+        project_name = project['name']
+
+        df = storage.get_metrics_history(project_id)
+
+        if not df.empty and metric_type in df.columns:
+            # Filter out None values
+            df_filtered = df[df[metric_type].notna()].copy()
+
+            if len(df_filtered) > 1:
+                # Calculate daily changes
+                df_filtered['change'] = df_filtered[metric_type].diff()
+
+                # Remove first row (NaN) and filter to show only non-zero changes
+                df_changes = df_filtered[1:].copy()
+                df_changes = df_changes[df_changes['change'] != 0]
+
+                if not df_changes.empty:
+                    # Create color array: green for positive, red for negative
+                    colors = ['green' if x > 0 else 'red' for x in df_changes['change']]
+
+                    fig.add_trace(go.Bar(
+                        x=df_changes.index,
+                        y=df_changes['change'],
+                        name=project_name,
+                        marker_color=colors,
+                        hovertemplate=f'<b>{project_name}</b><br>' +
+                                      'Date: %{x}<br>' +
+                                      f'Change: %{{y:+d}}<br>' +
+                                      '<extra></extra>'
+                    ))
+
+    # Update layout
+    title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
+    y_label = "Words Change" if metric_type == "word_count" else "Pages Change"
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title=y_label,
+        hovermode='x unified',
+        height=500,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        barmode='group'
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def display_project_cards(storage: MetricsStorage, projects: list):
     """Display current metrics as cards.
 
@@ -331,10 +402,22 @@ def main():
         tab1, tab2 = st.tabs(["Word Count", "Page Count"])
 
         with tab1:
+            st.subheader("Cumulative Word Count")
             plot_metrics_over_time(storage, projects, "word_count")
 
+            st.divider()
+
+            st.subheader("Words Added Per Day")
+            plot_daily_change(storage, projects, "word_count")
+
         with tab2:
+            st.subheader("Cumulative Page Count")
             plot_metrics_over_time(storage, projects, "page_count")
+
+            st.divider()
+
+            st.subheader("Pages Added Per Day")
+            plot_daily_change(storage, projects, "page_count")
 
 
 if __name__ == "__main__":
