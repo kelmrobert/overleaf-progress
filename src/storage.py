@@ -234,16 +234,29 @@ class MetricsStorage:
         # Get latest metrics
         latest = df.iloc[-1]
 
-        # Calculate deltas
+        # Calculate deltas comparing today vs yesterday (last different day)
         word_count_delta = 0
         page_count_delta = 0
 
         if len(df) > 1:
-            previous = df.iloc[-2]
-            if pd.notna(latest['word_count']) and pd.notna(previous['word_count']):
-                word_count_delta = int(latest['word_count'] - previous['word_count'])
-            if pd.notna(latest['page_count']) and pd.notna(previous['page_count']):
-                page_count_delta = int(latest['page_count'] - previous['page_count'])
+            # Convert index to date only (remove time component)
+            df_copy = df.copy()
+            df_copy['date'] = df_copy.index.date
+
+            # Get today's date
+            today = df_copy.index[-1].date()
+
+            # Find yesterday's data (last date before today)
+            df_yesterday = df_copy[df_copy['date'] < today]
+
+            if not df_yesterday.empty:
+                # Get the last entry from yesterday
+                yesterday_latest = df_yesterday.iloc[-1]
+
+                if pd.notna(latest['word_count']) and pd.notna(yesterday_latest['word_count']):
+                    word_count_delta = int(latest['word_count'] - yesterday_latest['word_count'])
+                if pd.notna(latest['page_count']) and pd.notna(yesterday_latest['page_count']):
+                    page_count_delta = int(latest['page_count'] - yesterday_latest['page_count'])
 
         return {
             'current_word_count': int(latest['word_count']) if pd.notna(latest['word_count']) else 0,
