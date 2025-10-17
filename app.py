@@ -9,6 +9,7 @@ from pathlib import Path
 import altair as alt
 import pandas as pd
 import streamlit as st
+from zoneinfo import ZoneInfo
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -180,7 +181,9 @@ def display_project_cards(storage: MetricsStorage, projects: list):
                         delta=summary['page_count_delta']
                     )
 
-                st.caption(f"Last updated: {summary['last_update'].strftime('%Y-%m-%d %H:%M')}")
+                # Convert UTC to German timezone
+                last_update_german = summary['last_update'].replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo('Europe/Berlin'))
+                st.caption(f"Last updated: {last_update_german.strftime('%Y-%m-%d %H:%M')}")
             else:
                 st.info("No data yet")
 

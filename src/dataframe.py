@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 def group_and_pivot_metrics(
     df: pd.DataFrame,
@@ -22,6 +23,9 @@ def group_and_pivot_metrics(
 
     # Create a copy to avoid modifying the original DataFrame
     df = df.copy()
+
+    # Convert timestamps from UTC to German timezone
+    df['timestamp'] = df['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Europe/Berlin')
 
     # Round timestamps to the nearest minute for grouping
     df['timestamp_rounded'] = df['timestamp'].dt.round('1min')
