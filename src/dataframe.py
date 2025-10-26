@@ -28,7 +28,8 @@ def group_and_pivot_metrics(
     df['timestamp'] = df['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Europe/Berlin')
 
     # Round timestamps to the nearest minute for grouping
-    df['timestamp_rounded'] = df['timestamp'].dt.round('1min')
+    # Handle DST transitions by inferring ambiguous times
+    df['timestamp_rounded'] = df['timestamp'].dt.round('1min', ambiguous='infer', nonexistent='shift_forward')
 
     # Pivot the table
     pivot_df = df.pivot_table(
