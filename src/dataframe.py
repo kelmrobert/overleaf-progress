@@ -29,9 +29,8 @@ def group_and_pivot_metrics(
 
     # Round timestamps to the nearest minute for grouping
     # Convert to naive (remove timezone) before rounding to avoid DST ambiguity issues
-    # Then re-localize to the timezone
+    # Keep as naive timestamps to avoid DST complications in the pivot operation
     df['timestamp_rounded'] = df['timestamp'].dt.tz_localize(None).dt.round('1min')
-    df['timestamp_rounded'] = df['timestamp_rounded'].dt.tz_localize('Europe/Berlin', ambiguous='infer', nonexistent='shift_forward')
 
     # Pivot the table
     pivot_df = df.pivot_table(
