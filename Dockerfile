@@ -27,8 +27,8 @@ COPY app.py .
 COPY extract_metrics.py .
 COPY .streamlit/ ./.streamlit/
 
-# Set up cron job for hourly extraction
-RUN echo "0 * * * * cd /app && /usr/local/bin/python3 /app/extract_metrics.py >> /app/data/cron.log 2>&1" > /etc/cron.d/extract-metrics && \
+# Set up cron job for extraction every 30 minutes
+RUN echo "*/30 * * * * cd /app && /usr/local/bin/python3 /app/extract_metrics.py >> /app/data/cron.log 2>&1" > /etc/cron.d/extract-metrics && \
     chmod 0644 /etc/cron.d/extract-metrics && \
     crontab /etc/cron.d/extract-metrics
 
