@@ -218,7 +218,7 @@ def sidebar_add_project(config: Config, sync: OverleafSync):
 
                 if success:
                     st.success(f"Project '{project_name}' added successfully!")
-                    st.info("The metrics will be collected on the next hourly run.")
+                    st.info("The metrics will be collected on the next scheduled run (every 20 minutes).")
                     st.rerun()
                 else:
                     st.error("Project already exists")
@@ -268,7 +268,7 @@ def sidebar_info(config: Config, storage: MetricsStorage):
     """
     st.sidebar.header("Data Extraction")
 
-    st.caption("Metrics are extracted hourly by, you can trigger a manual extraction below.")
+    st.caption("Metrics are extracted every 20 minutes, you can trigger a manual extraction below.")
 
     # Manual extraction button
     if st.sidebar.button("💾 Extract Manually", type="primary"):
@@ -319,6 +319,37 @@ def sidebar_info(config: Config, storage: MetricsStorage):
         pass
 
 
+def sidebar_project_selector(config: Config):
+    """Sidebar section for selecting which projects to display.
+
+    Args:
+        config: Configuration instance
+
+    Returns:
+        List of selected project dictionaries
+    """
+    projects = config.get_projects()
+
+    if not projects:
+        return []
+
+    st.sidebar.header("Project Filter")
+    project_names = [p['name'] for p in projects]
+
+    # Use multiselect for choosing which projects to display
+    selected_project_names = st.sidebar.multiselect(
+        "Select projects to display",
+        options=project_names,
+        default=project_names,  # All projects selected by default
+        help="Choose which projects you want to see in the dashboard"
+    )
+
+    # Filter projects based on selection
+    selected_projects = [p for p in projects if p['name'] in selected_project_names]
+
+    return selected_projects
+
+
 def main():
     """Main application."""
     st.title("📚 Thesis Progress Tracker")
@@ -328,6 +359,8 @@ def main():
     config, sync, storage = initialize_components()
 
     # Sidebar
+    selected_projects = sidebar_project_selector(config)
+    st.sidebar.divider()
     sidebar_info(config, storage)
     st.sidebar.divider()
     sidebar_add_project(config, sync)
@@ -342,42 +375,48 @@ def main():
         st.markdown("""
         ### How it works
         1. Add your Overleaf project using the sidebar
-        2. Metrics are automatically extracted every hour via cron
+        2. Metrics are automatically extracted every 30 minutes via cron
         3. View your progress over time in the charts below
 
         **Note:** Make sure the `extract_metrics.py` script is running via cron.
         """)
-    else:
-        # Display current metrics
-        st.header("Current Status")
-        display_project_cards(storage, projects)
+        return
 
-        st.divider()
+    # Check if any projects are selected
+    if not selected_projects:
+        st.warning("Please select at least one project to display from the sidebar.")
+        return
 
-        # Display charts
-        st.header("Progress Over Time")
+    # Display current metrics
+    st.header("Current Status")
+    display_project_cards(storage, selected_projects)
 
-        # Cumulative progress charts side by side
-        st.subheader("Cumulative Progress")
-        col1, col2 = st.columns(2)
+    st.divider()
 
-        with col1:
-            plot_metrics_over_time(storage, projects, "word_count")
+    # Display charts
+    st.header("Progress Over Time")
 
-        with col2:
-            plot_metrics_over_time(storage, projects, "page_count")
+    # Cumulative progress charts side by side
+    st.subheader("Cumulative Progress")
+    col1, col2 = st.columns(2)
 
-        st.divider()
+    with col1:
+        plot_metrics_over_time(storage, selected_projects, "word_count")
 
-        # Daily changes side by side
-        st.subheader("Daily Changes")
-        col3, col4 = st.columns(2)
+    with col2:
+        plot_metrics_over_time(storage, selected_projects, "page_count")
 
-        with col3:
-            plot_daily_change(storage, projects, "word_count")
+    st.divider()
 
-        with col4:
-            plot_daily_change(storage, projects, "page_count")
+    # Daily changes side by side
+    st.subheader("Daily Changes")
+    col3, col4 = st.columns(2)
+
+    with col3:
+        plot_daily_change(storage, selected_projects, "word_count")
+
+    with col4:
+        plot_daily_change(storage, selected_projects, "page_count")
 
 
 if __name__ == "__main__":
