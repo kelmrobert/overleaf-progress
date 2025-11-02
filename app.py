@@ -336,27 +336,25 @@ def sidebar_project_selector(config: Config):
     st.sidebar.header("Project Filter")
     project_names = [p['name'] for p in projects]
 
-    # Check if there are URL parameters specifying featured projects
+    # Check if there's a URL parameter specifying a featured project
     query_params = st.query_params
     default_selection = project_names  # Default: all projects
 
-    # If 'projects' parameter exists in URL, use it as default
-    if 'projects' in query_params:
-        # Get the projects parameter (can be a single value or list)
-        featured_projects_param = query_params.get('projects')
+    # If 'project' parameter exists in URL, use it as default (case-insensitive)
+    if 'project' in query_params:
+        featured_project_param = query_params.get('project')
 
-        # Handle both single value and list
-        if isinstance(featured_projects_param, str):
-            featured_projects = [featured_projects_param]
-        else:
-            featured_projects = featured_projects_param
+        # Case-insensitive matching
+        matched_project = None
+        for name in project_names:
+            if name.lower() == featured_project_param.lower():
+                matched_project = name
+                break
 
-        # Filter to only include valid project names
-        default_selection = [name for name in featured_projects if name in project_names]
-
-        # If no valid projects found in URL params, fall back to all projects
-        if not default_selection:
-            default_selection = project_names
+        # If a valid project was found, select only that one
+        if matched_project:
+            default_selection = [matched_project]
+        # Otherwise, fall back to all projects
 
     # Use multiselect for choosing which projects to display
     selected_project_names = st.sidebar.multiselect(
@@ -365,20 +363,6 @@ def sidebar_project_selector(config: Config):
         default=default_selection,
         help="Choose which projects you want to see in the dashboard"
     )
-
-    # Update URL parameters when selection changes
-    if selected_project_names:
-        # Only update if the selection is different from the URL params
-        current_url_projects = query_params.get('projects', [])
-        if isinstance(current_url_projects, str):
-            current_url_projects = [current_url_projects]
-
-        if set(selected_project_names) != set(current_url_projects):
-            st.query_params['projects'] = selected_project_names
-    else:
-        # Clear the parameter if no projects are selected
-        if 'projects' in query_params:
-            del st.query_params['projects']
 
     # Filter projects based on selection
     selected_projects = [p for p in projects if p['name'] in selected_project_names]
