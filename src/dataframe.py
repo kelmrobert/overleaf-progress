@@ -24,6 +24,14 @@ def group_and_pivot_metrics(
     # Create a copy to avoid modifying the original DataFrame
     df = df.copy()
 
+    # Filter to only include selected projects
+    selected_project_ids = list(project_names.keys())
+    df = df[df['project_id'].isin(selected_project_ids)]
+
+    # If no data remains after filtering, return empty DataFrame
+    if df.empty:
+        return pd.DataFrame()
+
     # Convert timestamps from UTC to German timezone
     df['timestamp'] = df['timestamp'].dt.tz_localize('UTC').dt.tz_convert('Europe/Berlin')
 
