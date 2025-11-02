@@ -35,6 +35,32 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# Professional color palette for charts - cohesive and distinctive
+# Inspired by modern data visualization best practices
+PROJECT_COLOR_PALETTE = [
+    "#4A90E2",  # Soft Blue - calm, trustworthy
+    "#E85D75",  # Coral Pink - warm, energetic
+    "#50C878",  # Emerald Green - fresh, positive
+    "#9B59B6",  # Amethyst Purple - creative, elegant
+    "#F39C12",  # Amber Orange - vibrant, optimistic
+    "#16A085",  # Teal - balanced, professional
+    "#E74C3C",  # Soft Red - bold, passionate
+    "#3498DB",  # Sky Blue - open, friendly
+]
+
+
+def get_project_colors(project_names: list) -> dict:
+    """Get consistent colors for projects.
+
+    Args:
+        project_names: List of project names
+
+    Returns:
+        Dictionary mapping project names to colors
+    """
+    return {name: PROJECT_COLOR_PALETTE[i % len(PROJECT_COLOR_PALETTE)]
+            for i, name in enumerate(project_names)}
+
 
 @st.cache_resource
 def initialize_components():
@@ -67,9 +93,9 @@ def plot_metrics_over_time(storage: MetricsStorage, projects: list, metric_type:
         title = "Word Count Progress" if metric_type == "word_count" else "Page Count Progress"
         st.write(f"**{title}**")
 
-        # Define a list of colors
-        color_palette = ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#FF00FF", "#00FFFF"]
-        colors = color_palette[:len(processed_df.columns)]
+        # Get consistent colors for projects
+        color_map = get_project_colors(list(processed_df.columns))
+        colors = [color_map[col] for col in processed_df.columns]
 
         # Use Streamlit line chart with colors
         st.line_chart(processed_df, height=400, color=colors)
@@ -107,9 +133,6 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
             title = "Words Added Per Day" if metric_type == "word_count" else "Pages Added Per Day"
             st.write(f"**{title}**")
 
-            # Define a list of colors
-            color_palette = ["#FF0000", "#0000FF", "#00FF00", "#FFFF00", "#FF00FF", "#00FFFF"]
-
             # Reshape data for grouped bars: stack by date and project
             # Convert from wide format (columns=projects) to long format
             daily_sum_reset = daily_sum.reset_index()
@@ -119,9 +142,9 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
             # Create a date string column for display
             melted['Date'] = melted[date_col].dt.strftime('%Y-%m-%d')
 
-            # Assign colors based on project
+            # Get consistent colors for projects
             project_list = daily_sum.columns.tolist()
-            color_map = {proj: color_palette[idx % len(color_palette)] for idx, proj in enumerate(project_list)}
+            color_map = get_project_colors(project_list)
 
             # Create Altair grouped bar chart
             chart = alt.Chart(melted).mark_bar().encode(
@@ -136,9 +159,209 @@ def plot_daily_change(storage: MetricsStorage, projects: list, metric_type: str 
                 height=400
             )
 
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("No daily changes to display.")
+    else:
+        st.info("No data available yet")
+
+
+def plot_writing_velocity(storage: MetricsStorage, projects: list, metric_type: str = "word_count"):
+    """Plot writing velocity with moving averages.
+
+    Args:
+        storage: Metrics storage instance
+        projects: List of project dictionaries
+        metric_type: Either "word_count" or "page_count"
+    """
+    if not projects:
+        return
+
+    project_names = {p['id']: p['name'] for p in projects}
+    processed_df = storage.get_processed_metrics(project_names, metric_type)
+
+    if not processed_df.empty:
+        # Calculate daily changes
+        daily_changes = processed_df.diff()
+
+        # Resample to daily frequency
+        daily_sum = daily_changes.resample('D').sum()
+
+        # Calculate 7-day and 30-day moving averages
+        ma_7 = daily_sum.rolling(window=7, min_periods=1).mean()
+        ma_30 = daily_sum.rolling(window=30, min_periods=1).mean()
+
+        if not daily_sum.empty:
+            title = "Writing Velocity (Words/Day)" if metric_type == "word_count" else "Writing Velocity (Pages/Day)"
+            st.write(f"**{title}**")
+
+            # Combine all data for visualization
+            combined_data = []
+
+            for project in daily_sum.columns:
+                # Add actual daily changes
+                df_actual = daily_sum[[project]].reset_index()
+                df_actual.columns = ['date', 'value']
+                df_actual['Project'] = project
+                df_actual['Type'] = 'Daily'
+                combined_data.append(df_actual)
+
+                # Add 7-day MA
+                df_ma7 = ma_7[[project]].reset_index()
+                df_ma7.columns = ['date', 'value']
+                df_ma7['Project'] = project
+                df_ma7['Type'] = '7-day avg'
+                combined_data.append(df_ma7)
+
+                # Add 30-day MA
+                df_ma30 = ma_30[[project]].reset_index()
+                df_ma30.columns = ['date', 'value']
+                df_ma30['Project'] = project
+                df_ma30['Type'] = '30-day avg'
+                combined_data.append(df_ma30)
+
+            melted = pd.concat(combined_data, ignore_index=True)
+            melted['date'] = pd.to_datetime(melted['date'])
+
+            # Get consistent colors for projects
+            project_list = list(daily_sum.columns)
+            color_map = get_project_colors(project_list)
+
+            # Create layered chart
+            base = alt.Chart(melted).encode(
+                x=alt.X('date:T', title='Date')
+            )
+
+            # Daily changes as bars
+            bars = base.transform_filter(
+                alt.datum.Type == 'Daily'
+            ).mark_bar(opacity=0.3).encode(
+                y=alt.Y('value:Q', title=title),
+                color=alt.Color('Project:N',
+                              scale=alt.Scale(domain=list(color_map.keys()),
+                                            range=list(color_map.values())),
+                              legend=alt.Legend(title='Project'))
+            )
+
+            # 7-day MA as line
+            line_7 = base.transform_filter(
+                alt.datum.Type == '7-day avg'
+            ).mark_line(strokeWidth=2).encode(
+                y='value:Q',
+                color=alt.Color('Project:N',
+                              scale=alt.Scale(domain=list(color_map.keys()),
+                                            range=list(color_map.values())),
+                              legend=None),
+                strokeDash=alt.value([5, 5])
+            )
+
+            # 30-day MA as thicker line
+            line_30 = base.transform_filter(
+                alt.datum.Type == '30-day avg'
+            ).mark_line(strokeWidth=3).encode(
+                y='value:Q',
+                color=alt.Color('Project:N',
+                              scale=alt.Scale(domain=list(color_map.keys()),
+                                            range=list(color_map.values())),
+                              legend=None)
+            )
+
+            chart = (bars + line_7 + line_30).properties(height=400)
+            st.altair_chart(chart, width='stretch')
+
+            st.caption("Bars: Daily changes | Dashed: 7-day average | Solid: 30-day average")
+        else:
+            st.info("Not enough data to calculate velocity")
+    else:
+        st.info("No data available yet")
+
+
+def display_productivity_stats(storage: MetricsStorage, projects: list):
+    """Display productivity statistics cards.
+
+    Args:
+        storage: Metrics storage instance
+        projects: List of project dictionaries
+    """
+    if not projects:
+        return
+
+    project_names = {p['id']: p['name'] for p in projects}
+    processed_df = storage.get_processed_metrics(project_names, "word_count")
+
+    if not processed_df.empty:
+        # Calculate daily changes
+        daily_changes = processed_df.diff()
+        daily_sum = daily_changes.resample('D').sum()
+
+        # Remove days with no activity
+        daily_sum = daily_sum[(daily_sum != 0).any(axis=1)]
+
+        if not daily_sum.empty:
+            # Calculate statistics across all projects
+            total_daily = daily_sum.sum(axis=1)
+
+            best_day = total_daily.idxmax()
+            best_day_words = int(total_daily.max())
+
+            worst_day = total_daily[total_daily > 0].idxmin() if (total_daily > 0).any() else None
+            worst_day_words = int(total_daily[total_daily > 0].min()) if (total_daily > 0).any() else 0
+
+            avg_words = int(total_daily[total_daily > 0].mean()) if (total_daily > 0).any() else 0
+
+            # Calculate streak (consecutive days with progress)
+            current_streak = 0
+            max_streak = 0
+            temp_streak = 0
+
+            dates = daily_sum.index.date
+            today = pd.Timestamp.now().date()
+
+            for i, date in enumerate(dates):
+                if total_daily.iloc[i] > 0:
+                    temp_streak += 1
+                    max_streak = max(max_streak, temp_streak)
+
+                    # Check if this is part of current streak
+                    if i == len(dates) - 1 or date == today:
+                        current_streak = temp_streak
+                else:
+                    temp_streak = 0
+
+            # Display stats
+            cols = st.columns(4)
+
+            with cols[0]:
+                st.metric(
+                    label="📈 Best Day",
+                    value=f"{best_day_words:,} words",
+                    delta=best_day.strftime('%Y-%m-%d')
+                )
+
+            with cols[1]:
+                if worst_day:
+                    st.metric(
+                        label="📉 Slowest Day",
+                        value=f"{worst_day_words:,} words",
+                        delta=worst_day.strftime('%Y-%m-%d')
+                    )
+                else:
+                    st.metric(label="📉 Slowest Day", value="N/A")
+
+            with cols[2]:
+                st.metric(
+                    label="⚡ Avg per Day",
+                    value=f"{avg_words:,} words"
+                )
+
+            with cols[3]:
+                st.metric(
+                    label="🔥 Longest Streak",
+                    value=f"{max_streak} days",
+                    delta=f"Current: {current_streak}" if current_streak > 0 else "Not active"
+                )
+        else:
+            st.info("Not enough activity data for statistics")
     else:
         st.info("No data available yet")
 
@@ -162,10 +385,10 @@ def display_project_cards(storage: MetricsStorage, projects: list):
         summary = storage.get_project_summary(project_id)
 
         with cols[idx]:
-            st.subheader(project_name)
+            with st.container(border=True):
+                st.subheader(project_name)
 
-            if summary:
-                with st.container(border=True):
+                if summary:
                     col1, col2 = st.columns(2)
 
                     with col1:
@@ -182,11 +405,12 @@ def display_project_cards(storage: MetricsStorage, projects: list):
                             delta=summary['page_count_delta']
                         )
 
-                # Convert UTC to German timezone
-                last_update_german = summary['last_update'].replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo('Europe/Berlin'))
-                st.caption(f"Last updated: {last_update_german.strftime('%Y-%m-%d %H:%M')}")
-            else:
-                st.info("No data yet")
+                    # Convert UTC to German timezone
+                    last_update_german = summary['last_update'].replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo('Europe/Berlin'))
+                    st.caption(f"Last updated: {last_update_german.strftime('%Y-%m-%d %H:%M')}")
+
+                else:
+                    st.info("No data yet")
 
 
 def sidebar_add_project(config: Config, sync: OverleafSync):
@@ -269,7 +493,7 @@ def sidebar_info(config: Config, storage: MetricsStorage):
     """
     st.sidebar.header("Data Extraction")
 
-    st.caption("Metrics are extracted every 20 minutes, you can trigger a manual extraction below.")
+    st.caption("Metrics are extracted every 30 minutes, you can trigger a manual extraction below.")
 
     # Manual extraction button
     if st.sidebar.button("💾 Extract Manually", type="primary"):
@@ -438,6 +662,21 @@ def main():
 
     with col4:
         plot_daily_change(storage, selected_projects, "page_count")
+
+    st.divider()
+
+    # Productivity Analytics
+    st.header("📊 Productivity Analytics")
+
+    # Statistics cards
+    st.subheader("Performance Summary")
+    display_productivity_stats(storage, selected_projects)
+
+    st.divider()
+
+    # Writing velocity
+    st.subheader("Writing Velocity")
+    plot_writing_velocity(storage, selected_projects, "word_count")
 
 
 if __name__ == "__main__":
