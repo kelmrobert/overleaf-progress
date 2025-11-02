@@ -165,21 +165,22 @@ def display_project_cards(storage: MetricsStorage, projects: list):
             st.subheader(project_name)
 
             if summary:
-                col1, col2 = st.columns(2)
+                with st.container(border=True):
+                    col1, col2 = st.columns(2)
 
-                with col1:
-                    st.metric(
-                        label="Words",
-                        value=f"{summary['current_word_count']:,}",
-                        delta=summary['word_count_delta']
-                    )
+                    with col1:
+                        st.metric(
+                            label="Words",
+                            value=f"{summary['current_word_count']:,}",
+                            delta=summary['word_count_delta']
+                        )
 
-                with col2:
-                    st.metric(
-                        label="Pages",
-                        value=summary['current_page_count'],
-                        delta=summary['page_count_delta']
-                    )
+                    with col2:
+                        st.metric(
+                            label="Pages",
+                            value=summary['current_page_count'],
+                            delta=summary['page_count_delta']
+                        )
 
                 # Convert UTC to German timezone
                 last_update_german = summary['last_update'].replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo('Europe/Berlin'))
